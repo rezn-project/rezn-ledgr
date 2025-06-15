@@ -1,0 +1,7 @@
+[submodule "deps/imtui"]
+	path = deps/imtui
+	url = https://github.com/ggerganov/imtui.git
+[submodule "deps/imgui"]
+	path = deps/imgui
+	url = https://github.com/ggerganov/imgui.git
+	branch = imtui-v1.81
