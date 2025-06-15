@@ -46,6 +46,9 @@ let () =
   Sys.set_signal Sys.sigterm (Sys.Signal_handle (fun _ -> cleanup_and_exit ()));
   Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> cleanup_and_exit ()));
 
+  (* Prevent accidental shutdowns *)
+  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+
   (* Unlink existing socket if present *)
   if Sys.file_exists socket_path then Unix.unlink socket_path;
 

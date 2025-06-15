@@ -1,20 +1,36 @@
 #include <vector>
 #include <string>
+#include <iostream>
 
 #include "imtui/imtui.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
 #include "imtui/imtui-impl-ncurses.h"
 
-struct HostDescriptor
-{
-    std::string name;
-    std::string host;
-};
+#include <nlohmann/json.hpp>
+
+#include "host_descriptor.hpp"
+#include <api_client.hpp>
+
+using json = nlohmann::json;
 
 static HostDescriptor newHost;
 
 int main()
 {
+    const char *sock_env = std::getenv("SOCKET_PATH");
+    std::string sock_path = sock_env ? sock_env : "/tmp/reznledgr.sock";
+
+    std::unique_ptr<LedgerApiClient> api;
+    try
+    {
+        api = std::make_unique<LedgerApiClient>(sock_path);
+    }
+    catch (const std::exception &ex)
+    {
+        std::cerr << "Failed to connect to daemon at " << sock_path << ": " << ex.what() << std::endl;
+        return 1;
+    }
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -25,7 +41,7 @@ int main()
     int nframes = 0;
     float fval = 1.23f;
 
-    std::vector<HostDescriptor> hosts;
+    std::vector<HostDescriptor> hosts = api->list_hosts();
 
     while (true)
     {

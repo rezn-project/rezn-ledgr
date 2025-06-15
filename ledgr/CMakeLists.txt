@@ -4,11 +4,13 @@ project(rezn-ledger LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/../deps)
 
 set(LEDGER_BASE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LEDGER_SRC
+        ${LEDGER_BASE_PATH}/src/client.cpp
+        ${LEDGER_BASE_PATH}/src/api_client.cpp
         ${LEDGER_BASE_PATH}/src/ledger.cpp
 )
 
@@ -31,6 +33,7 @@ target_include_directories(
     rezn-ledger PRIVATE
     ${LEDGER_BASE_PATH}/include
     ${DEPS}
+    ${DEPS}/json/single_include
     ${DEPS}/imgui
     ${DEPS}/imtui/include
 )
