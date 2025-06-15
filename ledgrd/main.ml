@@ -1,6 +1,11 @@
 let default_socket_path = "/run/reznledgr/rezn.sock"
 let fallback_socket_path = "/tmp/reznledgr.sock"
 
+let get_db_path () =
+  match Sys.getenv_opt "LEDGR_DB_PATH" with
+  | Some path -> path
+  | None -> "ledger.db"
+
 let get_socket_path () =
   match Sys.getenv_opt "SOCKET_PATH" with
   | Some path -> path
@@ -19,6 +24,12 @@ let get_socket_path () =
 
 let socket_path = get_socket_path ()
 let backlog = 10
+
+
+let () =
+  let db = Sqlite3.db_open (get_db_path ()) in
+  Migrations.migrate db;
+  ignore (Sqlite3.db_close db)
 
 let () =
   let sock = ref None in
@@ -78,26 +89,13 @@ let () =
       let raw_input = Buffer.contents buf in
 
       let response =
+        let db = Sqlite3.db_open (get_db_path ()) in
         try
-          match Yojson.Safe.from_string raw_input with
-          | `Assoc [ ("op", `String "list") ] ->
-              `Assoc [
-                "status", `String "ok";
-                "entries", `List []  (* Actual empty list, not a string *)
-              ]
-
-          | `Assoc [ ("op", `String unknown_op) ] ->
-              `Assoc [
-                "status", `String "error";
-                "message", `String ("Unknown op: " ^ unknown_op)
-              ]
-
-          | _ ->
-              `Assoc [
-                "status", `String "error";
-                "message", `String "Invalid request format"
-              ]
+          let result = Dispatcher.dispatch raw_input db in
+          Sqlite3.db_close db |> ignore;
+          result
         with exn ->
+          Sqlite3.db_close db |> ignore;
           Printf.eprintf "Handler error: %s\n%!" (Printexc.to_string exn);
           `Assoc [
             "status", `String "error";
