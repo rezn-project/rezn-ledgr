@@ -24,10 +24,12 @@ let get_socket_path () =
 
 let socket_path = get_socket_path ()
 let backlog = 10
-let db = Sqlite3.db_open (get_db_path ())
+
 
 let () =
-  Migrations.migrate db
+  let db = Sqlite3.db_open (get_db_path ()) in
+  Migrations.migrate db;
+  ignore (Sqlite3.db_close db)
 
 let () =
   let sock = ref None in
@@ -86,10 +88,14 @@ let () =
       with End_of_file -> ());
       let raw_input = Buffer.contents buf in
 
-      let response = 
+      let response =
+        let db = Sqlite3.db_open (get_db_path ()) in
         try
-          Dispatcher.dispatch raw_input db
+          let result = Dispatcher.dispatch raw_input db in
+          Sqlite3.db_close db |> ignore;
+          result
         with exn ->
+          Sqlite3.db_close db |> ignore;
           Printf.eprintf "Handler error: %s\n%!" (Printexc.to_string exn);
           `Assoc [
             "status", `String "error";
