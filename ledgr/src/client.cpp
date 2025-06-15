@@ -16,6 +16,8 @@ LedgerClient::LedgerClient(const std::string &socket_path)
             std::string("Error connecting to UNIX socket at ") + socket_path +
             ": " + res.error_message());
     }
+
+    conn.read_timeout(std::chrono::seconds{5});
 }
 
 nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
