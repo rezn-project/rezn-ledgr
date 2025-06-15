@@ -11,12 +11,17 @@
 #include "host_descriptor.hpp"
 #include <api_client.hpp>
 
+#include "sockpp/unix_connector.h"
+#include "sockpp/version.h"
+
 using json = nlohmann::json;
 
 static HostDescriptor newHost;
 
 int main()
 {
+    sockpp::initialize();
+
     const char *sock_env = std::getenv("SOCKET_PATH");
     std::string sock_path = sock_env ? sock_env : "/tmp/reznledgr.sock";
 
@@ -30,6 +35,8 @@ int main()
         std::cerr << "Failed to connect to daemon at " << sock_path << ": " << ex.what() << std::endl;
         return 1;
     }
+
+    std::cout << "Connected to daemon at " << sock_path << std::endl;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

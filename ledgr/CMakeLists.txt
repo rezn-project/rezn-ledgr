@@ -17,6 +17,8 @@ set(LEDGER_SRC
 find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIR})
 
+add_subdirectory(${DEPS}/sockpp ${CMAKE_BINARY_DIR}/sockpp-build)
+
 add_executable(rezn-ledger
     ${LEDGER_SRC}
     ${DEPS}/imgui/imgui.cpp
@@ -38,4 +40,4 @@ target_include_directories(
     ${DEPS}/imtui/include
 )
 
-target_link_libraries(rezn-ledger ${CURSES_LIBRARIES})
+target_link_libraries(rezn-ledger ${CURSES_LIBRARIES} Sockpp::sockpp)

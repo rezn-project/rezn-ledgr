@@ -9,61 +9,59 @@
 
 LedgerClient::LedgerClient(const std::string &socket_path)
 {
-    sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (sock_fd < 0)
-        throw std::runtime_error("socket() failed");
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (socket_path.size() >= sizeof(addr.sun_path))
-        throw std::runtime_error("Socket path too long");
-
-    std::strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
-
-    std::cerr << "[DEBUG] Connecting to socket: " << socket_path << std::endl;
-
-    size_t len = offsetof(sockaddr_un, sun_path) + std::strlen(addr.sun_path);
-    if (connect(sock_fd, (sockaddr *)&addr, len) < 0)
+    if (auto res = conn.connect(sockpp::unix_address(socket_path)); !res)
     {
-        close(sock_fd);
-        throw std::runtime_error("connect() failed");
+        throw std::runtime_error(
+            std::string("Error connecting to UNIX socket at ") + socket_path +
+            ": " + res.error_message());
     }
-}
-
-LedgerClient::~LedgerClient()
-{
-    if (sock_fd >= 0)
-        close(sock_fd);
 }
 
 nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 {
     std::string msg = req.dump() + "\n";
 
-    std::cerr << "[DEBUG] Sending: " << msg << std::endl;
+    // Write full request
+    auto write_res = conn.write(msg);
+    if (!write_res)
+        throw std::runtime_error("sockpp: write() failed: " + write_res.error_message());
 
-    size_t total_written = 0;
-    while (total_written < msg.size())
-    {
-        ssize_t written = write(sock_fd, msg.c_str() + total_written, msg.size() - total_written);
-        if (written < 0)
-            throw std::runtime_error("write() failed");
-        total_written += written;
-    }
+    if (write_res.value() != msg.size())
+        throw std::runtime_error("sockpp: partial write: expected " + std::to_string(msg.size()) +
+                                 ", got " + std::to_string(write_res.value()));
 
+    // Read response until newline
     std::string resp;
-    char buf[1024];
-    ssize_t n;
-    while ((n = read(sock_fd, buf, sizeof(buf))) > 0)
+    char ch;
+    while (true)
     {
-        resp.append(buf, n);
-        if (!resp.empty() && resp.back() == '\n')
+        sockpp::result<size_t> read_res;
+        do
+        {
+            read_res = conn.read(&ch, 1);
+        } while (!read_res && errno == EINTR);
+
+        if (!read_res)
+            throw std::runtime_error("sockpp: read() failed: " + read_res.error_message());
+
+        if (read_res.value() == 0)
+            throw std::runtime_error("sockpp: connection closed by peer");
+
+        if (ch == '\n')
             break;
+
+        resp += ch;
+
+        if (resp.size() > 1024 * 1024)
+            throw std::runtime_error("sockpp: response too large or missing newline");
     }
-    if (n < 0)
-        throw std::runtime_error("read() failed");
 
-    std::cerr << "[DEBUG] Raw response: " << resp << std::endl;
-
-    return nlohmann::json::parse(resp);
+    try
+    {
+        return nlohmann::json::parse(resp);
+    }
+    catch (const std::exception &e)
+    {
+        throw std::runtime_error("JSON parse error: " + std::string(e.what()) + " - raw: " + resp);
+    }
 }
