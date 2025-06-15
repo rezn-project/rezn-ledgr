@@ -1,4 +1,6 @@
 (executable
  (name main)
- (modules main)
- (libraries cmdliner yojson threads unix))
+ (modules types dao dispatcher migrations main)
+ (preprocess
+  (pps ppx_deriving_yojson))
+ (libraries cmdliner sqlite3 yojson threads unix))

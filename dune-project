@@ -29,4 +29,6 @@
    (>= 1.3.0))
   (yojson
    (>= 2.2.2))
-  ppx_expect))
+  ppx_deriving_yojson
+  ppx_expect
+  sqlite3))
