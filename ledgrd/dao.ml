@@ -100,7 +100,7 @@ let list_entries db : entry list =
              loop ({ id; name; host } :: acc)
          | _ -> loop acc)
     | Sqlite3.Rc.DONE -> List.rev acc
-    | _ -> loop acc
+    | rc -> failwith ("SQLite error: " ^ Sqlite3.Rc.to_string rc)
   in
   let result = loop [] in
   ignore (Sqlite3.finalize stmt);
