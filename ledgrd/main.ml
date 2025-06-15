@@ -46,6 +46,9 @@ let () =
   Sys.set_signal Sys.sigterm (Sys.Signal_handle (fun _ -> cleanup_and_exit ()));
   Sys.set_signal Sys.sigint (Sys.Signal_handle (fun _ -> cleanup_and_exit ()));
 
+  (* Prevent accidental shutdowns *)
+  Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+
   (* Unlink existing socket if present *)
   if Sys.file_exists socket_path then Unix.unlink socket_path;
 
@@ -80,13 +83,7 @@ let () =
     in
 
     try
-      let buf = Buffer.create 2048 in
-      (try
-        while true do
-          Buffer.add_channel buf in_chan 1024
-        done
-      with End_of_file -> ());
-      let raw_input = Buffer.contents buf in
+      let raw_input = input_line in_chan in
 
       let response =
         let db = Sqlite3.db_open (get_db_path ()) in

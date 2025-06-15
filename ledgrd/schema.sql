@@ -1,5 +1,0 @@
-CREATE TABLE IF NOT EXISTS entries (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  host TEXT NOT NULL
-);

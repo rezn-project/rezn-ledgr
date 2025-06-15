@@ -4,16 +4,20 @@ project(rezn-ledger LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/../deps)
 
 set(LEDGER_BASE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(LEDGER_SRC
+        ${LEDGER_BASE_PATH}/src/client.cpp
+        ${LEDGER_BASE_PATH}/src/api_client.cpp
         ${LEDGER_BASE_PATH}/src/ledger.cpp
 )
 
 find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIR})
+
+add_subdirectory(${DEPS}/sockpp ${CMAKE_BINARY_DIR}/sockpp-build)
 
 add_executable(rezn-ledger
     ${LEDGER_SRC}
@@ -31,8 +35,9 @@ target_include_directories(
     rezn-ledger PRIVATE
     ${LEDGER_BASE_PATH}/include
     ${DEPS}
+    ${DEPS}/json/single_include
     ${DEPS}/imgui
     ${DEPS}/imtui/include
 )
 
-target_link_libraries(rezn-ledger ${CURSES_LIBRARIES})
+target_link_libraries(rezn-ledger ${CURSES_LIBRARIES} Sockpp::sockpp)
