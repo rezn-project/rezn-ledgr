@@ -16,7 +16,7 @@
 
 using json = nlohmann::json;
 
-static HostDescriptor newHost;
+static ledgr::HostDescriptor newHost;
 
 int main()
 {
@@ -48,7 +48,7 @@ int main()
     int nframes = 0;
     float fval = 1.23f;
 
-    std::vector<HostDescriptor> hosts = api->list_hosts();
+    std::vector<ledgr::HostDescriptor> hosts = api->list_hosts();
 
     while (true)
     {

@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
+#include <cerrno>
 
 LedgerClient::LedgerClient(const std::string &socket_path)
 {
@@ -23,7 +24,7 @@ nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 
     // Write full request
     auto write_res = conn.write(msg);
-    if (!write_res)
+    if (!write_res.is_ok())
         throw std::runtime_error("sockpp: write() failed: " + write_res.error_message());
 
     if (write_res.value() != msg.size())
@@ -39,7 +40,7 @@ nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
         do
         {
             read_res = conn.read(&ch, 1);
-        } while (!read_res && errno == EINTR);
+        } while (read_res.is_error() && read_res.error() == sockpp::errc::interrupted);
 
         if (!read_res)
             throw std::runtime_error("sockpp: read() failed: " + read_res.error_message());
