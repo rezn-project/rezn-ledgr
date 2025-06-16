@@ -1,70 +1,64 @@
-// ledger_client.cpp
 #include "client.hpp"
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
-#include <cerrno>
+#include <sstream>
 
-LedgerClient::LedgerClient(const std::string &socket_path)
+LedgerClient::LedgerClient(const std::string &socket_path,
+                           std::chrono::seconds timeout)
+    : curl_{curl_easy_init()},
+      socket_path_{socket_path},
+      timeout_sec_{static_cast<long>(timeout.count())}
 {
-    if (auto res = conn.connect(sockpp::unix_address(socket_path)); !res)
-    {
-        throw std::runtime_error(
-            std::string("Error connecting to UNIX socket at ") + socket_path +
-            ": " + res.error_message());
-    }
+    if (!curl_)
+        throw std::runtime_error("curl_easy_init() failed");
 
-    conn.read_timeout(std::chrono::seconds{5});
+    curl_easy_setopt(curl_.get(), CURLOPT_UNIX_SOCKET_PATH, socket_path_.c_str());
+    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/"); // path irrelevant for UDS
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, &LedgerClient::write_cb);
+    curl_easy_setopt(curl_.get(), CURLOPT_TIMEOUT, timeout_sec_);
+    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L); // avoid SIGPIPE
+}
+
+LedgerClient::~LedgerClient() = default;
+
+size_t LedgerClient::write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    auto *buf = static_cast<std::string *>(userdata);
+    buf->append(ptr, size * nmemb);
+    return size * nmemb;
 }
 
 nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 {
-    std::string msg = req.dump() + "\n";
+    const std::string body = req.dump();
+    std::string resp_body;
 
-    // Write full request
-    auto write_res = conn.write(msg);
-    if (!write_res.is_ok())
-        throw std::runtime_error("sockpp: write() failed: " + write_res.error_message());
+    struct curl_slist *hdrs = nullptr;
+    hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
 
-    if (write_res.value() != msg.size())
-        throw std::runtime_error("sockpp: partial write: expected " + std::to_string(msg.size()) +
-                                 ", got " + std::to_string(write_res.value()));
+    curl_easy_setopt(curl_.get(), CURLOPT_POST, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_HTTPHEADER, hdrs);
+    curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDSIZE, body.size());
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEDATA, &resp_body);
 
-    // Read response until newline
-    std::string resp;
-    char ch;
-    while (true)
-    {
-        sockpp::result<size_t> read_res;
-        do
-        {
-            read_res = conn.read(&ch, 1);
-        } while (read_res.is_error() && read_res.error() == sockpp::errc::interrupted);
+    CURLcode rc = curl_easy_perform(curl_.get());
+    curl_slist_free_all(hdrs); // free header list immediately
 
-        if (!read_res)
-            throw std::runtime_error("sockpp: read() failed: " + read_res.error_message());
+    if (rc != CURLE_OK)
+        throw std::runtime_error(std::string("libcurl: ") + curl_easy_strerror(rc));
 
-        if (read_res.value() == 0)
-            throw std::runtime_error("sockpp: connection closed by peer");
-
-        if (ch == '\n')
-            break;
-
-        resp += ch;
-
-        if (resp.size() > 1024 * 1024)
-            throw std::runtime_error("sockpp: response too large or missing newline");
-    }
+    long http_status = 0;
+    curl_easy_getinfo(curl_.get(), CURLINFO_RESPONSE_CODE, &http_status);
+    if (http_status != 200)
+        throw std::runtime_error("Server returned HTTP " + std::to_string(http_status) +
+                                 " – body: " + resp_body);
 
     try
     {
-        return nlohmann::json::parse(resp);
+        return nlohmann::json::parse(resp_body);
     }
     catch (const std::exception &e)
     {
-        throw std::runtime_error("JSON parse error: " + std::string(e.what()) + " - raw: " + resp);
+        throw std::runtime_error("JSON parse error: " + std::string(e.what()) +
+                                 " – raw: " + resp_body);
     }
 }
