@@ -49,38 +49,59 @@ size_t LedgerClient::write_cb(char *ptr, size_t size, size_t nmemb, void *userda
 
 nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 {
-    const std::string body = req.dump();
-    std::string resp_body;
+    /* ---------- request-specific state ---------- */
+    const std::string body = req.dump(); // JSON payload (must stay alive)
+    std::string resp_body;               // will collect response
 
     struct curl_slist *hdrs = nullptr;
     hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
 
+    /* ---------- PER-REQUEST options (must be set each call) ---------- */
     curl_easy_setopt(curl_.get(), CURLOPT_POST, 1L);
     curl_easy_setopt(curl_.get(), CURLOPT_HTTPHEADER, hdrs);
     curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDS, body.c_str());
     curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDSIZE, body.size());
     curl_easy_setopt(curl_.get(), CURLOPT_WRITEDATA, &resp_body);
 
+    /* ---------- perform ---------- */
     CURLcode rc = curl_easy_perform(curl_.get());
-    curl_slist_free_all(hdrs); // free header list immediately
+
+    /* hdrs is no longer needed after the transfer */
+    curl_slist_free_all(hdrs); // safe: libcurl does NOT free it
+
+    /* ---------- status code BEFORE reset ---------- */
+    long http_status = 0;
+    if (rc == CURLE_OK)
+        curl_easy_getinfo(curl_.get(), CURLINFO_RESPONSE_CODE, &http_status);
+
+    /* ---------- reset handle to clear dangling pointers ---------- */
     curl_easy_reset(curl_.get());
 
+    /* ---------- INVARIANT options (apply once per cycle) ---------- */
+    curl_easy_setopt(curl_.get(), CURLOPT_UNIX_SOCKET_PATH, socket_path_.c_str());
+    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/");
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, &LedgerClient::write_cb);
+    curl_easy_setopt(curl_.get(), CURLOPT_TIMEOUT, timeout_sec_);
+    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L);
+
+    /* ---------- error handling ---------- */
     if (rc != CURLE_OK)
-        throw std::runtime_error(std::string("libcurl: ") + curl_easy_strerror(rc));
+        throw std::runtime_error("libcurl: " +
+                                 std::string(curl_easy_strerror(rc)));
 
-    long http_status = 0;
-    curl_easy_getinfo(curl_.get(), CURLINFO_RESPONSE_CODE, &http_status);
     if (http_status != 200)
-        throw std::runtime_error("Server returned HTTP " + std::to_string(http_status) +
-                                 " – body: " + resp_body);
+        throw std::runtime_error("HTTP " + std::to_string(http_status) +
+                                 " - body: " + resp_body);
 
+    /* ---------- JSON parse ---------- */
     try
     {
         return nlohmann::json::parse(resp_body);
     }
     catch (const std::exception &e)
     {
-        throw std::runtime_error("JSON parse error: " + std::string(e.what()) +
-                                 " – raw: " + resp_body);
+        throw std::runtime_error("JSON parse error: " +
+                                 std::string(e.what()) +
+                                 " - raw: " + resp_body);
     }
 }
