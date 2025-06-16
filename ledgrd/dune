@@ -3,4 +3,4 @@
  (modules types dao dispatcher migrations main)
  (preprocess
   (pps ppx_deriving_yojson))
- (libraries cmdliner dream lwt sqlite3 yojson threads unix))
+ (libraries cmdliner dream lwt.unix sqlite3 yojson threads unix))

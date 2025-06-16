@@ -34,14 +34,10 @@ let () =
 (* ---------- one-off start-up migration ---------- *)
 
 let () =
-  (* Run blocking Sqlite work in a pre-emptive thread so we don’t block Lwt   *)
-  Lwt_preemptive.run_in_main @@ fun () ->
-    Lwt_preemptive.detach
-      (fun () ->
-         let db = Sqlite3.db_open (get_db_path ()) in
-         Migrations.migrate db;
-         ignore (Sqlite3.db_close db))
-      ()
+  (* Runs before Dream’s event loop starts, so blocking here is fine. *)
+  let db = Sqlite3.db_open (get_db_path ()) in
+  Migrations.migrate db;
+  ignore (Sqlite3.db_close db)
 
 (* ---------- request handler ---------- *)
 
