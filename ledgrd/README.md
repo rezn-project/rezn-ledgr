@@ -4,4 +4,10 @@ An OCaml daemon that manages ledger entries
 
 ## Quick local test
 
-`echo '{"op": "list"}' | socat - UNIX-CONNECT:/tmp/reznledgr.sock`
+```bash
+echo '{"op":"list"}' \
+| curl --unix-socket /tmp/reznledgr.sock \
+       -H 'Content-Type: application/json' \
+       -d @- \
+       http://localhost/
+```
