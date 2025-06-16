@@ -19,6 +19,8 @@
  (synopsis "Rezn Ledgr")
  (description "Local daemon for storage and sync of rezn ledger entries")
  (depends
+  dream
+  lwt
   (base64
    (and
     (>= 3.5.0)
