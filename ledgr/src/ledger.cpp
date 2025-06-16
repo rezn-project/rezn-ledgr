@@ -11,17 +11,12 @@
 #include "host_descriptor.hpp"
 #include <api_client.hpp>
 
-#include "sockpp/unix_connector.h"
-#include "sockpp/version.h"
-
 using json = nlohmann::json;
 
 static ledgr::HostDescriptor newHost;
 
 int main()
 {
-    sockpp::initialize();
-
     const char *sock_env = std::getenv("SOCKET_PATH");
     std::string sock_path = sock_env ? sock_env : "/tmp/reznledgr.sock";
 
@@ -38,6 +33,17 @@ int main()
 
     std::cout << "Connected to daemon at " << sock_path << std::endl;
 
+    std::vector<ledgr::HostDescriptor> hosts;
+    try
+    {
+        hosts = api->list_hosts();
+    }
+    catch (const std::exception &ex)
+    {
+        std::cerr << "Failed to fetch hosts: " << ex.what() << std::endl;
+        return 1;
+    }
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -47,8 +53,6 @@ int main()
     bool demo = true;
     int nframes = 0;
     float fval = 1.23f;
-
-    std::vector<ledgr::HostDescriptor> hosts = api->list_hosts();
 
     while (true)
     {

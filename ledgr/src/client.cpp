@@ -1,70 +1,107 @@
-// ledger_client.cpp
 #include "client.hpp"
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <stdexcept>
-#include <cstring>
-#include <iostream>
-#include <cerrno>
+#include <sstream>
 
-LedgerClient::LedgerClient(const std::string &socket_path)
+namespace
 {
-    if (auto res = conn.connect(sockpp::unix_address(socket_path)); !res)
+    struct CurlGlobalGuard
     {
-        throw std::runtime_error(
-            std::string("Error connecting to UNIX socket at ") + socket_path +
-            ": " + res.error_message());
-    }
+        CurlGlobalGuard()
+        {
+            CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+            if (rc != CURLE_OK)
+                throw std::runtime_error(
+                    std::string("curl_global_init failed: ") + curl_easy_strerror(rc));
+        }
+        ~CurlGlobalGuard()
+        {
+            curl_global_cleanup();
+        }
+    };
 
-    conn.read_timeout(std::chrono::seconds{5});
+    /* Static instance: constructed before main(), destroyed on exit */
+    static CurlGlobalGuard curl_global_guard;
+} // namespace
+
+LedgerClient::LedgerClient(const std::string &socket_path,
+                           std::chrono::seconds timeout)
+    : curl_{curl_easy_init()},
+      socket_path_{socket_path},
+      timeout_sec_{static_cast<long>(timeout.count())}
+{
+    if (!curl_)
+        throw std::runtime_error("curl_easy_init() failed");
+
+    apply_invariants();
+}
+
+void LedgerClient::apply_invariants()
+{
+    curl_easy_setopt(curl_.get(), CURLOPT_UNIX_SOCKET_PATH, socket_path_.c_str());
+    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/");
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, &LedgerClient::write_cb);
+    curl_easy_setopt(curl_.get(), CURLOPT_TIMEOUT, timeout_sec_);
+    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L);
+}
+
+LedgerClient::~LedgerClient() = default;
+
+size_t LedgerClient::write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    auto *buf = static_cast<std::string *>(userdata);
+    buf->append(ptr, size * nmemb);
+    return size * nmemb;
 }
 
 nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 {
-    std::string msg = req.dump() + "\n";
+    /* ---------- request-specific state ---------- */
+    const std::string body = req.dump(); // JSON payload (must stay alive)
+    std::string resp_body;               // will collect response
 
-    // Write full request
-    auto write_res = conn.write(msg);
-    if (!write_res.is_ok())
-        throw std::runtime_error("sockpp: write() failed: " + write_res.error_message());
+    struct curl_slist *hdrs = nullptr;
+    hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
 
-    if (write_res.value() != msg.size())
-        throw std::runtime_error("sockpp: partial write: expected " + std::to_string(msg.size()) +
-                                 ", got " + std::to_string(write_res.value()));
+    /* ---------- PER-REQUEST options (must be set each call) ---------- */
+    curl_easy_setopt(curl_.get(), CURLOPT_POST, 1L);
+    curl_easy_setopt(curl_.get(), CURLOPT_HTTPHEADER, hdrs);
+    curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl_.get(), CURLOPT_POSTFIELDSIZE, body.size());
+    curl_easy_setopt(curl_.get(), CURLOPT_WRITEDATA, &resp_body);
 
-    // Read response until newline
-    std::string resp;
-    char ch;
-    while (true)
-    {
-        sockpp::result<size_t> read_res;
-        do
-        {
-            read_res = conn.read(&ch, 1);
-        } while (read_res.is_error() && read_res.error() == sockpp::errc::interrupted);
+    /* ---------- perform ---------- */
+    CURLcode rc = curl_easy_perform(curl_.get());
 
-        if (!read_res)
-            throw std::runtime_error("sockpp: read() failed: " + read_res.error_message());
+    /* hdrs is no longer needed after the transfer */
+    curl_slist_free_all(hdrs); // safe: libcurl does NOT free it
 
-        if (read_res.value() == 0)
-            throw std::runtime_error("sockpp: connection closed by peer");
+    /* ---------- status code BEFORE reset ---------- */
+    long http_status = 0;
+    if (rc == CURLE_OK)
+        curl_easy_getinfo(curl_.get(), CURLINFO_RESPONSE_CODE, &http_status);
 
-        if (ch == '\n')
-            break;
+    /* ---------- reset handle to clear dangling pointers ---------- */
+    curl_easy_reset(curl_.get());
 
-        resp += ch;
+    apply_invariants();
 
-        if (resp.size() > 1024 * 1024)
-            throw std::runtime_error("sockpp: response too large or missing newline");
-    }
+    /* ---------- error handling ---------- */
+    if (rc != CURLE_OK)
+        throw std::runtime_error("libcurl: " +
+                                 std::string(curl_easy_strerror(rc)));
 
+    if (http_status != 200)
+        throw std::runtime_error("HTTP " + std::to_string(http_status) +
+                                 " - body: " + resp_body);
+
+    /* ---------- JSON parse ---------- */
     try
     {
-        return nlohmann::json::parse(resp);
+        return nlohmann::json::parse(resp_body);
     }
     catch (const std::exception &e)
     {
-        throw std::runtime_error("JSON parse error: " + std::string(e.what()) + " - raw: " + resp);
+        throw std::runtime_error("JSON parse error: " +
+                                 std::string(e.what()) +
+                                 " - raw: " + resp_body);
     }
 }

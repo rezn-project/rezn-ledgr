@@ -9,6 +9,8 @@ homepage: "https://github.com/rezn-project/rezn-ledgr"
 bug-reports: "https://github.com/rezn-project/rezn-ledgr/issues"
 depends: [
   "dune" {>= "3.17"}
+  "dream"
+  "lwt"
   "base64" {>= "3.5.0" & < "4.0.0"}
   "cmdliner" {>= "1.3.0"}
   "digestif" {>= "1.3.0"}
