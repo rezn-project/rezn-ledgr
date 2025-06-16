@@ -17,6 +17,7 @@ It runs directly in your terminal with a responsive interface powered by [ImTui]
 - View connection details in a structured UI
 - Instant rendering via Dear ImGui (ImTui backend)
 - Minimal learning curve: point, type, connect
+- UI runs securely over SSH
 
 ---
 
