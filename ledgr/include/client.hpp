@@ -30,4 +30,5 @@ private:
     long timeout_sec_;
 
     static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata);
+    void apply_invariants();
 };

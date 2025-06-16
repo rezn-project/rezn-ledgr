@@ -31,11 +31,16 @@ LedgerClient::LedgerClient(const std::string &socket_path,
     if (!curl_)
         throw std::runtime_error("curl_easy_init() failed");
 
+    apply_invariants();
+}
+
+void LedgerClient::apply_invariants()
+{
     curl_easy_setopt(curl_.get(), CURLOPT_UNIX_SOCKET_PATH, socket_path_.c_str());
-    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/"); // path irrelevant for UDS
+    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/");
     curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, &LedgerClient::write_cb);
     curl_easy_setopt(curl_.get(), CURLOPT_TIMEOUT, timeout_sec_);
-    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L); // avoid SIGPIPE
+    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L);
 }
 
 LedgerClient::~LedgerClient() = default;
@@ -77,12 +82,7 @@ nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
     /* ---------- reset handle to clear dangling pointers ---------- */
     curl_easy_reset(curl_.get());
 
-    /* ---------- INVARIANT options (apply once per cycle) ---------- */
-    curl_easy_setopt(curl_.get(), CURLOPT_UNIX_SOCKET_PATH, socket_path_.c_str());
-    curl_easy_setopt(curl_.get(), CURLOPT_URL, "http://localhost/");
-    curl_easy_setopt(curl_.get(), CURLOPT_WRITEFUNCTION, &LedgerClient::write_cb);
-    curl_easy_setopt(curl_.get(), CURLOPT_TIMEOUT, timeout_sec_);
-    curl_easy_setopt(curl_.get(), CURLOPT_NOSIGNAL, 1L);
+    apply_invariants();
 
     /* ---------- error handling ---------- */
     if (rc != CURLE_OK)
