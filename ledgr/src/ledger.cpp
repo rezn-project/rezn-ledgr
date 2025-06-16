@@ -33,6 +33,17 @@ int main()
 
     std::cout << "Connected to daemon at " << sock_path << std::endl;
 
+    std::vector<ledgr::HostDescriptor> hosts;
+    try
+    {
+        hosts = api->list_hosts();
+    }
+    catch (const std::exception &ex)
+    {
+        std::cerr << "Failed to fetch hosts: " << ex.what() << std::endl;
+        return 1;
+    }
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -42,8 +53,6 @@ int main()
     bool demo = true;
     int nframes = 0;
     float fval = 1.23f;
-
-    std::vector<ledgr::HostDescriptor> hosts = api->list_hosts();
 
     while (true)
     {

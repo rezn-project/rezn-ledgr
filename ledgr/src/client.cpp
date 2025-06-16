@@ -1,6 +1,27 @@
 #include "client.hpp"
 #include <sstream>
 
+namespace
+{
+    struct CurlGlobalGuard
+    {
+        CurlGlobalGuard()
+        {
+            CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+            if (rc != CURLE_OK)
+                throw std::runtime_error(
+                    std::string("curl_global_init failed: ") + curl_easy_strerror(rc));
+        }
+        ~CurlGlobalGuard()
+        {
+            curl_global_cleanup();
+        }
+    };
+
+    /* Static instance: constructed before main(), destroyed on exit */
+    static CurlGlobalGuard curl_global_guard;
+} // namespace
+
 LedgerClient::LedgerClient(const std::string &socket_path,
                            std::chrono::seconds timeout)
     : curl_{curl_easy_init()},
@@ -42,6 +63,7 @@ nlohmann::json LedgerClient::send_request(const nlohmann::json &req)
 
     CURLcode rc = curl_easy_perform(curl_.get());
     curl_slist_free_all(hdrs); // free header list immediately
+    curl_easy_reset(curl_.get());
 
     if (rc != CURLE_OK)
         throw std::runtime_error(std::string("libcurl: ") + curl_easy_strerror(rc));

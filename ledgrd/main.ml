@@ -67,12 +67,21 @@ let dream_handler req =
 
 let stop_promise, stop_wakener = Lwt.wait ()
 
+let already_stopping = ref false          (* <— new flag *)
+
+let stop () =
+  if not !already_stopping then begin     (* fire exactly once *)
+    already_stopping := true;
+    Lwt.wakeup_later stop_wakener ()
+  end
+
 let () =
-  let stop () = Lwt.wakeup_later stop_wakener () in
   Sys.set_signal Sys.sigterm (Sys.Signal_handle (fun _ -> stop ()));
   Sys.set_signal Sys.sigint  (Sys.Signal_handle (fun _ -> stop ()));
+
   at_exit (fun () ->
-      if Sys.file_exists socket_path then Sys.remove socket_path)
+    (* remove stale socket file on exit *)
+    if Sys.file_exists socket_path then Sys.remove socket_path)
 
 (* ---------- run Dream ---------- *)
 

@@ -52,6 +52,7 @@ add_executable(rezn-ledger ${PROJECT_SOURCES})
 
 target_include_directories(rezn-ledger PRIVATE
     ${INCLUDE_DIR}                    # your own headers
+    ${CURSES_INCLUDE_DIR}
     ${DEPS_DIR}                       # umbrella include for other deps
     ${DEPS_DIR}/json/single_include   # nlohmann/json
     ${DEPS_DIR}/imgui
